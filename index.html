@@ -1,0 +1,13 @@
+<html lang="en">
+<body>
+    <form action="/upload" method="post" enctype="multipart/form-data">
+        Image: <input type="file" name="my_file">
+        <input type="submit" value="Submit">
+    </form>
+    <div style="display: flex; flex-direction: column;">
+        {{range .Images}}
+            <img src="{{.Path}}" style="max-width: 300px; border: 1px solid #ccc;" />
+        {{end}}
+    </div>
+</body>
+</html>
