@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"html/template"
 	"io"
-	"io/fs"
 	"log"
 	"math/rand"
 	"net/http"
@@ -23,6 +22,12 @@ type Photo struct {
 	Path string
 }
 
+type Storage struct {
+	data []Photo
+}
+
+var storage Storage
+
 func main() {
 	mux := http.NewServeMux()
 
@@ -34,34 +39,34 @@ func main() {
 	log.Fatal(http.ListenAndServe(":8080", mux))
 }
 
-type Image struct {
-	Path string
-}
-
 func mainPage(w http.ResponseWriter, r *http.Request) {
 	tmpl := template.Must(template.ParseFiles("./index.html"))
-	images := []Image{}
-	err := filepath.WalkDir("./images", func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if !d.IsDir() && strings.HasSuffix(d.Name(), "_160.jpg") {
-			imgPath := "/images/" + d.Name()
-			images = append(images, Image{Path: imgPath})
-			fmt.Printf("Найден файл: %s -> URL: %s\n", d.Name(), imgPath)
-		}
-		return nil
-	})
+	photos := []Photo{}
 
-	if err != nil {
-		http.Error(w, "Ошибка чтения изображений", http.StatusBadRequest)
-		return
+	for _, item := range storage.data {
+		fileName := filepath.Base(item.Path)
+		nameWithoutExt := strings.TrimSuffix(fileName, filepath.Ext(fileName))
+		thumbURL := "/images/" + nameWithoutExt + "_160.jpg"
+
+		localThumbPath := filepath.Join("./images", nameWithoutExt+"_160.jpg")
+		_, err := os.Stat(localThumbPath)
+		if os.IsNotExist(err) {
+			fmt.Println("Превью не найдено:", localThumbPath)
+			continue
+		}
+
+		photos = append(photos, Photo{
+			ID:   0,
+			User: 0,
+			Path: thumbURL,
+		})
+
 	}
 
 	tmpl.Execute(w, struct {
-		Images []Image
+		Photos []Photo
 	}{
-		images,
+		photos,
 	})
 }
 
@@ -115,10 +120,13 @@ func upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	func() {
-		err := generateThumbnails(finalPath, md5Name)
-		fmt.Println(err)
-	}()
+	err = generateThumbnails(finalPath, md5Name)
+	if err != nil {
+		http.Error(w, "Ошибка записи файла", http.StatusInternalServerError)
+		return
+	}
+
+	storage.data = append(storage.data, Photo{Path: finalPath})
 
 	http.Redirect(w, r, "/", http.StatusMovedPermanently)
 }
