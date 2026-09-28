@@ -22,6 +22,9 @@ type Photo struct {
 	Path string
 }
 
+const PORT = 8080
+const IMAGE_PATH = "./images"
+
 type Storage struct {
 	data []Photo
 }
@@ -29,6 +32,17 @@ type Storage struct {
 var storage Storage
 
 func main() {
+
+	_, err := os.Stat(IMAGE_PATH)
+	if os.IsNotExist(err) {
+		fmt.Println("Папка %s не создана:", IMAGE_PATH)
+		err = os.Mkdir(IMAGE_PATH, 0755)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+	}
+
 	mux := http.NewServeMux()
 
 	fs := http.FileServer(http.Dir("./images"))
@@ -36,7 +50,8 @@ func main() {
 	mux.HandleFunc("/upload", upload)
 	mux.Handle("/images/", http.StripPrefix("/images", fs))
 
-	log.Fatal(http.ListenAndServe(":8080", mux))
+	fmt.Printf("Server run on PORT: %d", PORT)
+	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", PORT), mux))
 }
 
 func mainPage(w http.ResponseWriter, r *http.Request) {
@@ -44,11 +59,9 @@ func mainPage(w http.ResponseWriter, r *http.Request) {
 	photos := []Photo{}
 
 	for _, item := range storage.data {
-		fileName := filepath.Base(item.Path)
-		nameWithoutExt := strings.TrimSuffix(fileName, filepath.Ext(fileName))
-		thumbURL := "/images/" + nameWithoutExt + "_160.jpg"
+		thumbURL := "/images/" + item.Path + "_160.jpg"
 
-		localThumbPath := filepath.Join("./images", nameWithoutExt+"_160.jpg")
+		localThumbPath := filepath.Join("./images", item.Path+"_160.jpg")
 		_, err := os.Stat(localThumbPath)
 		if os.IsNotExist(err) {
 			fmt.Println("Превью не найдено:", localThumbPath)
@@ -126,7 +139,7 @@ func upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	storage.data = append(storage.data, Photo{Path: finalPath})
+	storage.data = append(storage.data, Photo{Path: md5Name})
 
 	http.Redirect(w, r, "/", http.StatusMovedPermanently)
 }
