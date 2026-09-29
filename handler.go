@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/md5"
 	"encoding/hex"
 	"io"
@@ -9,12 +10,17 @@ import (
 	"path/filepath"
 )
 
+type Storage interface {
+	Add(ctx context.Context, p *Photo) error
+	GetPhotos(ctx context.Context, userID int) ([]*Photo, error)
+}
+
 type PhotolistHandler struct {
-	St   *StMem
+	St   Storage
 	Tmpl *Tmpl
 }
 
-func NewHandler(st *StMem, tmpl *Tmpl) *PhotolistHandler {
+func NewHandler(st Storage, tmpl *Tmpl) *PhotolistHandler {
 	return &PhotolistHandler{
 		St:   st,
 		Tmpl: tmpl,
@@ -23,7 +29,7 @@ func NewHandler(st *StMem, tmpl *Tmpl) *PhotolistHandler {
 
 func (h *PhotolistHandler) List(w http.ResponseWriter, r *http.Request) {
 
-	items, err := h.St.GetPhotos(0)
+	items, err := h.St.GetPhotos(r.Context(), 0)
 	if err != nil {
 		http.Error(w, "Ошибка хранилища: GetPhotos", http.StatusInternalServerError)
 		return
@@ -95,7 +101,7 @@ func (h *PhotolistHandler) Upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.St.Add(&Photo{Path: md5Name}); err != nil {
+	if err := h.St.Add(r.Context(), &Photo{Path: md5Name}); err != nil {
 		http.Error(w, "Не удалось добавить новую элемент в хранилище", http.StatusInternalServerError)
 		return
 	}
