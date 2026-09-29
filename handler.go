@@ -25,15 +25,18 @@ func (h *PhotolistHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	items, err := h.St.GetPhotos(0)
 	if err != nil {
-		http.Error(w, "Ошибка GetPhotos", http.StatusBadRequest)
+		http.Error(w, "Ошибка хранилища: GetPhotos", http.StatusInternalServerError)
 		return
 	}
 
-	h.Tmpl.template.Execute(w, struct {
+	if err := h.Tmpl.template.Execute(w, struct {
 		Items []*Photo
 	}{
 		items,
-	})
+	}); err != nil {
+		http.Error(w, "Ошибка шаблона: Execute", http.StatusInternalServerError)
+		return
+	}
 }
 
 func (h *PhotolistHandler) Upload(w http.ResponseWriter, r *http.Request) {
@@ -60,7 +63,7 @@ func (h *PhotolistHandler) Upload(w http.ResponseWriter, r *http.Request) {
 
 	file, header, err := r.FormFile("my_file")
 	if err != nil {
-		http.Error(w, "Ошибка получения файла", http.StatusBadRequest)
+		http.Error(w, "Ошибка получения файла", http.StatusInternalServerError)
 		return
 	}
 
@@ -92,7 +95,10 @@ func (h *PhotolistHandler) Upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.St.Add(&Photo{Path: md5Name})
+	if err := h.St.Add(&Photo{Path: md5Name}); err != nil {
+		http.Error(w, "Не удалось добавить новую элемент в хранилище", http.StatusInternalServerError)
+		return
+	}
 
 	http.Redirect(w, r, "/photos", http.StatusFound)
 }
