@@ -3,12 +3,18 @@ package main
 import "html/template"
 
 type Tmpl struct {
-	template *template.Template
+	templateIndex *template.Template
+	templateLogin *template.Template
+	templateReg   *template.Template
 }
 
 func NewTmpl() *Tmpl {
-	tmpl := template.Must(template.ParseFiles("./index.html"))
+	tmplIdx := template.Must(template.ParseFiles("./index.html"))
+	tmplLog := template.Must(template.ParseFiles("./login.html"))
+	tmplReg := template.Must(template.ParseFiles("./reg.html"))
 	return &Tmpl{
-		template: tmpl,
+		templateIndex: tmplIdx,
+		templateLogin: tmplLog,
+		templateReg:   tmplReg,
 	}
 }

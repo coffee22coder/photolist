@@ -1,13 +1,16 @@
 <html lang="en">
-<body>
-    <form action="/upload" method="post" enctype="multipart/form-data">
-        Image: <input type="file" name="my_file">
-        <input type="submit" value="Submit">
+  <body>
+    <form action="/photos/upload" method="post" enctype="multipart/form-data">
+      Image: <input type="file" name="my_file" />
+      <input type="submit" value="Submit" />
     </form>
-    <div style="display: flex; flex-direction: column;">
-        {{range .Items}}
-            <img src="/images/{{.Path}}_160.jpg" style="max-width: 300px; border: 1px solid #ccc;" />
-        {{end}}
+    <div style="display: flex; flex-direction: column">
+      {{range .Items}}
+      <img
+        src="/images/{{.Path}}_160.jpg"
+        style="max-width: 300px; border: 1px solid #ccc"
+      />
+      {{end}}
     </div>
-</body>
+  </body>
 </html>

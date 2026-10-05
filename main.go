@@ -41,15 +41,23 @@ func main() {
 	st := NewDBStorage(db)
 	tmpl := NewTmpl()
 
-	ph := NewHandler(st, tmpl)
-
-	mux := http.NewServeMux()
+	ph := NewPhotoHandler(st, tmpl)
+	uh := NewUserHandler(st, tmpl)
 
 	fs := http.FileServer(http.Dir("./images"))
-	mux.HandleFunc("/", ph.List)
-	mux.HandleFunc("/upload", ph.Upload)
-	mux.Handle("/images/", http.StripPrefix("/images", fs))
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", ph.Index)
+	mux.HandleFunc("/photos/", ph.List)
+	mux.HandleFunc("/photos/upload", ph.Upload)
+	mux.HandleFunc("/user/login", uh.Login)
+	mux.HandleFunc("/user/reg", uh.Registration)
+	mux.HandleFunc("/user/logout", uh.Logout)
+
+	http.Handle("/", authMiddleware(st, mux))
+	http.Handle("/images/", http.StripPrefix("/images", fs))
 
 	fmt.Printf("🚀 Server run on PORT: %d\n", PORT)
-	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", PORT), mux))
+
+	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", PORT), nil))
 }

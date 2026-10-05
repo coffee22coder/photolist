@@ -10,32 +10,46 @@ import (
 	"path/filepath"
 )
 
-type Storage interface {
+type PhotoStorage interface {
 	Add(ctx context.Context, p *Photo) error
 	GetPhotos(ctx context.Context, userID int) ([]*Photo, error)
 }
 
 type PhotolistHandler struct {
-	St   Storage
+	St   PhotoStorage
 	Tmpl *Tmpl
 }
 
-func NewHandler(st Storage, tmpl *Tmpl) *PhotolistHandler {
+func NewPhotoHandler(st PhotoStorage, tmpl *Tmpl) *PhotolistHandler {
 	return &PhotolistHandler{
 		St:   st,
 		Tmpl: tmpl,
 	}
 }
 
-func (h *PhotolistHandler) List(w http.ResponseWriter, r *http.Request) {
+func (h *PhotolistHandler) Index(w http.ResponseWriter, r *http.Request) {
+	_, err := sessionFromContext(r.Context())
+	if err != nil {
+		http.Redirect(w, r, "/user/login", http.StatusFound)
+		return
+	}
+	http.Redirect(w, r, "/photos/", http.StatusFound)
+}
 
-	items, err := h.St.GetPhotos(r.Context(), 0)
+func (h *PhotolistHandler) List(w http.ResponseWriter, r *http.Request) {
+	sess, err := sessionFromContext(r.Context())
+	if err != nil {
+		http.Error(w, "Непредвиденная Ошибка", http.StatusInternalServerError)
+		return
+	}
+
+	items, err := h.St.GetPhotos(r.Context(), sess.UserID)
 	if err != nil {
 		http.Error(w, "Ошибка хранилища: GetPhotos", http.StatusInternalServerError)
 		return
 	}
 
-	if err := h.Tmpl.template.Execute(w, struct {
+	if err := h.Tmpl.templateIndex.Execute(w, struct {
 		Items []*Photo
 	}{
 		items,
@@ -101,7 +115,13 @@ func (h *PhotolistHandler) Upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.St.Add(r.Context(), &Photo{Path: md5Name}); err != nil {
+	sess, err := sessionFromContext(r.Context())
+	if err != nil {
+		http.Error(w, "Непредвиденная Ошибка", http.StatusInternalServerError)
+		return
+	}
+
+	if err := h.St.Add(r.Context(), &Photo{UserID: sess.UserID, Path: md5Name}); err != nil {
 		http.Error(w, "Не удалось добавить новую элемент в хранилище", http.StatusInternalServerError)
 		return
 	}

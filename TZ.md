@@ -1,81 +1,100 @@
-# ТЗ: PhotoList — шаг 2 (`2_tests`)
+# ТЗ: PhotoList — шаг 3 (`3_auth`)
 
 ## Цель
 
-Список фотографий хранится в MySQL. Обработчик зависит от интерфейса хранилища, не от конкретной реализации. Хранилище и `List` покрыты тестами. В тестах настоящая база не поднимается.
+Появляется пользователь. Список и загрузка фотографий работают только после входа. Кто вошёл, определяется сессией в cookie и строкой в таблице `sessions`, не JWT.
 
-Загрузка файла, превью, шаблон, маршруты и редирект `302` на `/photos` не меняются. `userID` по-прежнему `0`.
+`userID` больше не константа `0`. `List` и `Upload` берут его из сессии в `context`. Каждый пользователь видит и создаёт только свои фото.
+
+Сохранение JPEG, превью, интерфейс `Storage` и MySQL не меняются. JWT на этом шаге не делать.
 
 ## Что изменить
 
-- `St` в обработчике имеет тип `Storage`, не `*StMem`. Память `StMem` удаляется.
-- Появляется реализация `StDb` на `database/sql`.
-- `GetPhotos` возвращает только фото этого `user_id`. Фильтр живёт в SQL.
-- Тесты `Add` и `GetPhotos` на `sqlmock`.
-- Тест `List` на `gomock` и `httptest`.
+- Таблицы `users` и `sessions`.
+- Регистрация, логин, логаут.
+- Cookie `session_id` + запись в `sessions`.
+- Middleware: без сессии закрытые URL отвечают `401`.
+- Маршруты фотографий: `/photos/`, `/photos/upload`.
+- `GetPhotos` / `Add` получают `UserID` из сессии.
 
 ## Задачи
 
-### Интерфейс
+### Таблицы
 
-```go
-type Storage interface {
-    Add(*Photo) error
-    GetPhotos(int) ([]*Photo, error)
-}
-```
+`users`: `id` автоинкремент, `login` уникальная строка, `password` — `VARBINARY` (сырые байты, не строка).
 
-`PhotolistHandler.St` — этот интерфейс. `List` и `Upload` по-прежнему вызывают `GetPhotos(userID)` и `Add(&Photo{UserID: userID, Path: md5Sum})`.
+`sessions`: `id` строка (32 символа), `user_id`.
 
-### MySQL
+`photos` без изменений. `user_id` в фото — это `users.id`.
 
-Драйвер `github.com/go-sql-driver/mysql`. При старте открыть соединение и сделать `Ping`. Ошибка `Ping` останавливает процесс.
+### Пароль
 
-Строка соединения эталона:
+Соль — случайные 8 символов. Хеш: `argon2.IDKey(password, salt, 1, 64*1024, 4, 32)`. В базу пишется `salt + hash` одним срезом байт.
+
+Проверка на логине: из записи берутся первые 8 байт как соль, тот же `hashPass`, сравнение через `bytes.Equal` с тем, что лежит в `users.password`.
+
+Зависимость: `golang.org/x/crypto/argon2`.
+
+### Сессия
 
 ```text
-root:love@tcp(127.0.0.1:3306)/photolist?charset=utf8&interpolateParams=true
+Session { UserID, ID }
 ```
 
-Таблица `photos`: `id` (автоинкремент), `user_id`, `path`.
+`CreateSession`: случайный `id` 32 символа, `INSERT INTO sessions(id, user_id)`, cookie `session_id`, срок 90 дней, `Path=/`.
 
-`Add`:
+`CheckSession`: cookie `session_id` → `SELECT user_id FROM sessions WHERE id = ?`. Нет cookie или нет строки — `ErrNoAuth`.
 
-- `INSERT INTO photos(user_id, path) VALUES(?, ?)`
-- ошибка запроса возвращается как есть
-- `LastInsertId == 0` тоже ошибка
+`DestroySession`: `DELETE` по `id` из контекста, cookie с истекшим сроком.
 
-`GetPhotos(userID)`:
+Сессию в запрос кладёт middleware: `context.WithValue`. Тип ключа — не `string`, отдельный `ctxKey`. Достать: `SessionFromContext`.
 
-- `select id, user_id, path from photos where user_id = ?`
-- каждая строка сканируется в `Photo`
-- ошибка запроса и ошибка `Scan` возвращаются вызывающему
+### Middleware
 
-В обработчике передаётся `NewDbStorage(db)`.
+Закрытые URL требуют сессию, иначе `401` и тело `No auth`.
 
-### Тесты хранилища
+Открытые без обязательной сессии: `/user/login`, `/user/reg`, `/`.
 
-Пакет `gopkg.in/DATA-DOG/go-sqlmock.v1`. База — `sqlmock.New()`, не MySQL.
+Если cookie валидна, сессию всё равно клади в context на открытых URL: иначе `/` не отличит гостя от вошедшего.
 
-`Add`, фото `{UserID: 1, Path: "test"}`:
+`/images/` отдаётся без middleware, как статика.
 
-- успешный `INSERT`, `LastInsertId = 1` — ошибки нет, ожидания мока выполнены
-- ошибка `Exec` — `Add` возвращает ошибку
-- ошибка `LastInsertId` — `Add` возвращает ошибку
-- `LastInsertId = 0` — `Add` возвращает ошибку
+`/user/logout` закрыт: выйти можно только с сессией.
 
-`GetPhotos`:
+### Пользователь
 
-- строки `(1, userID, "tree")` и `(2, userID, "minion")` совпадают с результатом
-- ошибка запроса — метод возвращает ошибку
-- строка с другим набором колонок — ошибка `Scan`
+`UserHandler` с `*sql.DB` и шаблонами логина/регистрации.
 
-### Тест List
+`GET /user/login` — форма, поля `login`, `password`, `POST` на `/user/login`.  
+`POST`: найти пользователя, сверить пароль. Нет пользователя / неверный пароль → `400`. Успех → сессия, редирект `302` на `/photos/`.
 
-Мок интерфейса: `mockgen -source=handlers.go -destination=handlers_mock.go -package=main Storage`.
+`GET /user/reg` — форма, `POST` на `/user/reg`.  
+`POST`: соль, хеш, `INSERT INTO users(login, password)`. Ошибка вставки → `500`. Успех → сессия, редирект `302` на `/photos/`.
 
-Зависимость `github.com/golang/mock/gomock`. Запрос через `httptest`, шаблон настоящий.
+`GET/POST /user/logout` — уничтожить сессию, редирект `302` на `/user/login`.
 
-- `GetPhotos(0)` возвращает `[{ID: 1, UserID: 1, Path: "my_photo_name"}]` — в теле есть `"/images/my_photo_name_160.jpg"`
-- `GetPhotos` возвращает ошибку — статус `500`
-- шаблон с несуществующим полем — статус `500`
+`GET /` — нет сессии → `302` на `/user/login`. Есть сессия → `302` на `/photos/`.
+
+### Фотографии
+
+`List` и `Upload` снимают сессию из context. `GetPhotos(sess.UserID)`. `Add` с `UserID: sess.UserID` и `Path: md5Sum`.
+
+Форма загрузки: `action="/photos/upload"`.
+
+Маршруты:
+
+```text
+/photos/        List
+/photos/upload  Upload
+/user/login
+/user/logout
+/user/reg
+/               Index
+/images/        статика, без авторизации
+```
+
+Внутренний mux с этими обработчиками оборачивается middleware. На `DefaultServeMux`: `/` → middleware(mux), отдельно `/images/`.
+
+### Не делать
+
+JWT, refresh, CSRF, «забыли пароль», отдельный пакет auth. Тесты `Upload` не обязательны. Существующие тесты `List`/`GetPhotos` поправить только если перестала собираться сигнатура (`userID` из сессии, не литерал `0`).

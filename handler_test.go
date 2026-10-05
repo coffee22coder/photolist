@@ -16,8 +16,7 @@ var testPhotos = []*Photo{
 	{0, 2, "asd"},
 }
 
-type MyMockStorage struct {
-}
+type MyMockStorage struct{}
 
 func (ms *MyMockStorage) GetPhotos(ctx context.Context, userID int) ([]*Photo, error) {
 	if userID == 0 {
@@ -35,9 +34,11 @@ func TestList(t *testing.T) {
 	ms := &MyMockStorage{}
 	tmp := NewTmpl()
 
-	h := NewHandler(ms, tmp)
+	h := NewPhotoHandler(ms, tmp)
 
 	req := httptest.NewRequest("GET", "/", nil)
+	ctx := context.WithValue(req.Context(), authKey, &Session{UserID: 0, ID: "test"})
+	req = req.WithContext(ctx)
 	w := httptest.NewRecorder()
 
 	h.List(w, req)
@@ -54,10 +55,12 @@ func TestList(t *testing.T) {
 	defer ctrl.Finish()
 
 	st := NewMockStorage(ctrl)
-	hh := NewHandler(st, tmp)
+	hh := NewPhotoHandler(st, tmp)
 
-	st.EXPECT().GetPhotos(context.Background(), 0).Return(nil, fmt.Errorf("error!!!"))
+	st.EXPECT().GetPhotos(gomock.Any(), 0).Return(nil, fmt.Errorf("error!!!"))
 	req = httptest.NewRequest("GET", "/", nil)
+	ctx = context.WithValue(req.Context(), authKey, &Session{UserID: 0, ID: "test"})
+	req = req.WithContext(ctx)
 	w = httptest.NewRecorder()
 	hh.List(w, req)
 
@@ -67,12 +70,14 @@ func TestList(t *testing.T) {
 		t.Errorf("expected status code 500, got %d", resp.StatusCode)
 	}
 
-	st.EXPECT().GetPhotos(context.Background(), 0).Return(nil, nil)
-	hhh := NewHandler(st, tmp)
+	st.EXPECT().GetPhotos(gomock.Any(), 0).Return(nil, nil)
+	hhh := NewPhotoHandler(st, tmp)
 
-	hhh.Tmpl.template, _ = template.New("bad").Parse("{{.NotExist}}")
+	hhh.Tmpl.templateIndex, _ = template.New("bad").Parse("{{.NotExist}}")
 
 	req = httptest.NewRequest("GET", "/", nil)
+	ctx = context.WithValue(req.Context(), authKey, &Session{UserID: 0, ID: "test"})
+	req = req.WithContext(ctx)
 	w = httptest.NewRecorder()
 	hhh.List(w, req)
 
