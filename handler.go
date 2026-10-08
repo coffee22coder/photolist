@@ -67,6 +67,8 @@ func (h *PhotolistHandler) Upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	comment := r.FormValue("comment")
+
 	tmpName := randomName(8)
 	tmpPath := filepath.Join("./images", tmpName)
 
@@ -121,7 +123,7 @@ func (h *PhotolistHandler) Upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.St.Add(r.Context(), &Photo{UserID: sess.UserID, Path: md5Name}); err != nil {
+	if err := h.St.Add(r.Context(), &Photo{UserID: sess.UserID, Path: md5Name, Comment: comment}); err != nil {
 		http.Error(w, "Не удалось добавить новую элемент в хранилище", http.StatusInternalServerError)
 		return
 	}

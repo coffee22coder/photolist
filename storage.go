@@ -12,9 +12,11 @@ import (
 )
 
 type Photo struct {
-	ID     int
-	UserID int
-	Path   string
+	ID      int
+	UserID  int
+	Path    string
+	Comment string
+	Rating  int
 }
 
 type User struct {
@@ -44,7 +46,9 @@ func (st *DBStorage) migrate() error {
 		CREATE TABLE IF NOT EXISTS photos (
 			id INT AUTO_INCREMENT PRIMARY KEY,
 			user_id INT NOT NULL,
-			path VARCHAR(255) NOT NULL
+			path VARCHAR(255) NOT NULL,
+			comment VARCHAR(255),
+			rating int NOT NULL DEFAULT 0
 		)
 	`
 
@@ -58,6 +62,16 @@ func (st *DBStorage) migrate() error {
 	if err != nil {
 		log.Printf("Примечание: индекс idx_user_id: %v", err)
 	}
+
+	// al := `ALTER TABLE photos
+	// 		ADD COLUMN IF NOT EXISTS comment VARCHAR(255),
+	// 		ADD COLUMN IF NOT EXISTS rating int NOT NULL DEFAULT 0;
+	// `
+
+	// _, err = st.db.Exec(al)
+	// if err != nil {
+	// 	log.Printf("Примечание: индекс idx_user_id: %v", err)
+	// }
 
 	q = `
 		CREATE TABLE IF NOT EXISTS users (
@@ -91,6 +105,7 @@ func (st *DBStorage) migrate() error {
 	}
 
 	log.Println("✅ Миграция БД завершена успешно")
+
 	return nil
 
 }
@@ -98,7 +113,10 @@ func (st *DBStorage) migrate() error {
 func (st *DBStorage) Add(ctx context.Context, p *Photo) error {
 	op := "storage.add"
 
-	res, err := st.db.ExecContext(ctx, `INSERT INTO photos(user_id, path) VALUES(?, ?)`, p.UserID, p.Path)
+	res, err := st.db.ExecContext(ctx,
+		`INSERT INTO photos(user_id, path, comment) VALUES(?, ?, ?)`,
+		p.UserID, p.Path, p.Comment)
+
 	if err != nil {
 		return fmt.Errorf("%s: %w", op, err)
 	}
