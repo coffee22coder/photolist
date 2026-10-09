@@ -49,6 +49,7 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", ph.Index)
 	mux.HandleFunc("/photos/", ph.List)
+	mux.HandleFunc("/photos/rate", ph.Rate)
 	mux.HandleFunc("/photos/upload", ph.Upload)
 	mux.HandleFunc("/user/login", uh.Login)
 	mux.HandleFunc("/user/reg", uh.Registration)

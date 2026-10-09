@@ -1,17 +1,39 @@
 <html lang="en">
   <body>
     <form action="/photos/upload" method="post" enctype="multipart/form-data">
-      Image: <input type="file" name="my_file" />
-      <input type="submit" value="Submit" />
+      <div style="display: flex; flex-direction: column">
+        Image: <input type="file" name="my_file" />
+        <input type="submit" value="Submit" />
+        <input type="text" placeholder="Введите коммантарий" name="comment" />
+      </div>
     </form>
-    <input type="text" placeholder="Введите коммантарий" name="comment"/>
     <div style="display: flex; flex-direction: column">
       {{range .Items}}
-      <img
-        src="/images/{{.Path}}_160.jpg"
-        style="max-width: 300px; border: 1px solid #ccc"
-      />
+      <div>
+        <img
+          src="/images/{{.Path}}_160.jpg"
+          style="max-width: 300px; border: 1px solid #ccc"
+        />
+        <div style="display: flex; flex-direction: column">{{.Comment}}</div>
+        <div style="display: flex; gap: 16px">
+          <button onclick="rateComment({{.ID}}, 1)">+</button>
+          <div id="rating-{{.ID}}">{{.Rating}}</div>
+          <button onclick="rateComment({{.ID}}, -1)">-</button>
+        </div>
+      </div>
       {{end}}
     </div>
   </body>
+  <script>
+    const rateComment = async (id, count) => {
+      const rating = document.getElementById(`rating-${id}`);
+      const baseURL = '/photos/rate';
+      const url = baseURL + `?id=${id}&vote=${count === 1 ? 'up' : 'down'}`;
+      const response = await fetch(url, {
+        method: 'POST',
+      });
+      if (!response.ok) return;
+      rating.textContent = +rating.textContent + count;
+    };
+  </script>
 </html>

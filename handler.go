@@ -4,15 +4,18 @@ import (
 	"context"
 	"crypto/md5"
 	"encoding/hex"
+	"encoding/json"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 )
 
 type PhotoStorage interface {
 	Add(ctx context.Context, p *Photo) error
 	GetPhotos(ctx context.Context, userID int) ([]*Photo, error)
+	UpdateRate(ctx context.Context, photoID int, count int) error
 }
 
 type PhotolistHandler struct {
@@ -57,6 +60,41 @@ func (h *PhotolistHandler) List(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Ошибка шаблона: Execute", http.StatusInternalServerError)
 		return
 	}
+}
+
+func (h *PhotolistHandler) Rate(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	// if r.Method != http.MethodPost {
+	// 	http.Error(w, "Неправильные параметры запроса", http.StatusBadRequest)
+	// 	return
+	// }
+
+	id, err := strconv.Atoi(r.FormValue("id"))
+	if err != nil {
+		http.Error(w, `{"err": "bad id"}`, http.StatusBadRequest)
+		return
+	}
+
+	var count int
+	switch r.FormValue("vote") {
+	case "up":
+		count = 1
+	case "down":
+		count = -1
+	default:
+		http.Error(w, `{"err": "bad vote"}`, http.StatusBadRequest)
+		return
+	}
+
+	err = h.St.UpdateRate(r.Context(), id, count)
+	if err != nil {
+		http.Error(w, `{"err": "db err"}`, http.StatusBadRequest)
+		return
+	}
+
+	_ = json.NewEncoder(w).Encode(map[string]int{"id": id})
+
 }
 
 func (h *PhotolistHandler) Upload(w http.ResponseWriter, r *http.Request) {

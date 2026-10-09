@@ -12,8 +12,8 @@ import (
 )
 
 var testPhotos = []*Photo{
-	{0, 1, "qwe"},
-	{0, 2, "asd"},
+	{0, 0, "qwerty", "qwerty", 0},
+	{1, 0, "asdfgh", "qweqwe", 1},
 }
 
 type MyMockStorage struct{}
@@ -27,6 +27,10 @@ func (ms *MyMockStorage) GetPhotos(ctx context.Context, userID int) ([]*Photo, e
 }
 
 func (ms *MyMockStorage) Add(ctx context.Context, p *Photo) error {
+	return nil
+}
+
+func (ms *MyMockStorage) UpdateRate(ctx context.Context, photoID int, count int) error {
 	return nil
 }
 

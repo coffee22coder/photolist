@@ -137,24 +137,26 @@ func (st *DBStorage) Add(ctx context.Context, p *Photo) error {
 func (st *DBStorage) GetPhotos(ctx context.Context, userID int) ([]*Photo, error) {
 	op := "storage.get_photos"
 	photos := make([]*Photo, 0)
-	rows, err := st.db.QueryContext(ctx, `SELECT id, path FROM photos WHERE user_id=?`, userID)
+	rows, err := st.db.QueryContext(ctx, `SELECT id, path, comment, rating FROM photos WHERE user_id=?`, userID)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", op, err)
 	}
 	defer rows.Close()
 
 	for rows.Next() {
-		var id int
-		var path string
+		var id, rating int
+		var path, comment string
 
-		if err := rows.Scan(&id, &path); err != nil {
+		if err := rows.Scan(&id, &path, &comment, &rating); err != nil {
 			return nil, fmt.Errorf("%s: %w", op, err)
 		}
 
 		photo := &Photo{
-			ID:     id,
-			UserID: userID,
-			Path:   path,
+			ID:      id,
+			UserID:  userID,
+			Path:    path,
+			Comment: comment,
+			Rating:  rating,
 		}
 
 		photos = append(photos, photo)
@@ -165,6 +167,17 @@ func (st *DBStorage) GetPhotos(ctx context.Context, userID int) ([]*Photo, error
 	}
 
 	return photos, nil
+}
+
+func (st *DBStorage) UpdateRate(ctx context.Context, photoID int, count int) error {
+	op := "storage.update_rate"
+
+	_, err := st.db.ExecContext(ctx, `UPDATE photos SET rating = rating + ? WHERE id = ?`, count, photoID)
+	if err != nil {
+		return fmt.Errorf("%s: %w", op, err)
+	}
+
+	return nil
 }
 
 func (st *DBStorage) CreateSession(ctx context.Context, userID int) (*Session, error) {

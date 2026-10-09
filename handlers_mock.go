@@ -17,6 +17,11 @@ type MockStorage struct {
 	recorder *MockStorageMockRecorder
 }
 
+// UpdateRate implements [PhotoStorage].
+func (m *MockStorage) UpdateRate(ctx context.Context, photoID int, count int) error {
+	panic("unimplemented")
+}
+
 // MockStorageMockRecorder is the mock recorder for MockStorage.
 type MockStorageMockRecorder struct {
 	mock *MockStorage

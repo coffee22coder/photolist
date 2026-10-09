@@ -93,8 +93,8 @@ func TestStorageList(t *testing.T) {
 	)
 
 	expect := []*Photo{
-		{1, userId, "qwerty"},
-		{2, userId, "asdfgh"},
+		{1, userId, "qwerty", "qwerty", 0},
+		{2, userId, "asdfgh", "qweqwe", 1},
 	}
 
 	for _, item := range expect {
