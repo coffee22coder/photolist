@@ -14,6 +14,7 @@ import (
 const PORT = 8080
 const IMAGE_PATH = "./images"
 const DSN = "root:love@tcp(127.0.0.1:3306)/photolist?charset=utf8mb4&parseTime=true"
+const SECRET_TOKEN = "SUPERSECRETTOKENCSRF"
 
 func main() {
 
@@ -38,10 +39,11 @@ func main() {
 		}
 	}
 
+	tm := NewHMATokenManager([]byte(SECRET_TOKEN))
 	st := NewDBStorage(db)
 	tmpl := NewTmpl()
 
-	ph := NewPhotoHandler(st, tmpl)
+	ph := NewPhotoHandler(st, tmpl, tm)
 	uh := NewUserHandler(st, tmpl)
 
 	fs := http.FileServer(http.Dir("./images"))

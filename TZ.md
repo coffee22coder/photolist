@@ -27,7 +27,7 @@
 
 Логин и регистрация уже на `html/template` — оставить.
 
-Проверка: загрузить комментарий `<script>alert(1)</script>`, открыть `/photos/` — alert нет, в HTML сущности вроде `&lt;script&gt;`.
+Проверка: загрузить комментарий `<script>alert(1)</script>`, открыть `/photos/` — alert нет, в HTML сущности вроде `<script>`.
 
 ### Интерфейс токена
 
@@ -164,3 +164,4 @@ POST /photos/rate?id=...&vote=up|down
 - Не класть CSRF в cookie вместо form/header — смысл шага в synchronizer token на странице.
 - Не оставлять список на `text/template`.
 - Тесты на `TokenManager` не обязательны; моки storage поправить, если интерфейс handler’а разъехался.
+

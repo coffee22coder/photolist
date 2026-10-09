@@ -2,17 +2,16 @@ package main
 
 import (
 	"html/template"
-	textTemplate "text/template"
 )
 
 type Tmpl struct {
-	templateIndex *textTemplate.Template
+	templateIndex *template.Template
 	templateLogin *template.Template
 	templateReg   *template.Template
 }
 
 func NewTmpl() *Tmpl {
-	tmplIdx := textTemplate.Must(textTemplate.ParseFiles("./index.html"))
+	tmplIdx := template.Must(template.ParseFiles("./index.html"))
 	tmplLog := template.Must(template.ParseFiles("./login.html"))
 	tmplReg := template.Must(template.ParseFiles("./reg.html"))
 	return &Tmpl{

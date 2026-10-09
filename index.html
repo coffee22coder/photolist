@@ -5,6 +5,7 @@
         Image: <input type="file" name="my_file" />
         <input type="submit" value="Submit" />
         <input type="text" placeholder="Введите коммантарий" name="comment" />
+        <input type="text" hidden name="csrf-token" value="{{.Token}}" />
       </div>
     </form>
     <div style="display: flex; flex-direction: column">
@@ -31,6 +32,9 @@
       const url = baseURL + `?id=${id}&vote=${count === 1 ? 'up' : 'down'}`;
       const response = await fetch(url, {
         method: 'POST',
+        headers: {
+          'CSRF-token': "{{.Token}}"
+        },
       });
       if (!response.ok) return;
       rating.textContent = +rating.textContent + count;
