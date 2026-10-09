@@ -10,17 +10,17 @@ import (
 	"time"
 )
 
-type HMATokenManager struct {
+type HashTokenManager struct {
 	Secret []byte
 }
 
-func NewHMATokenManager(s []byte) *HMATokenManager {
-	return &HMATokenManager{
+func NewHashTokenManager(s []byte) *HashTokenManager {
+	return &HashTokenManager{
 		Secret: s,
 	}
 }
 
-func (tm *HMATokenManager) Create(sess *Session, expUnix int64) (string, error) {
+func (tm *HashTokenManager) Create(sess *Session, expUnix int64) (string, error) {
 	payload := fmt.Sprintf("%d:%s:%d", sess.UserID, sess.ID, expUnix)
 
 	hash := hmac.New(sha256.New, tm.Secret)
@@ -30,7 +30,7 @@ func (tm *HMATokenManager) Create(sess *Session, expUnix int64) (string, error) 
 	return fmt.Sprintf("%s:%d", signature, expUnix), nil
 }
 
-func (tm *HMATokenManager) Check(sess *Session, token string) (bool, error) {
+func (tm *HashTokenManager) Check(sess *Session, token string) (bool, error) {
 	tokenParts := strings.Split(token, ":")
 	if len(tokenParts) != 2 || tokenParts[0] == "" || tokenParts[1] == "" {
 		return false, fmt.Errorf("token invalid")

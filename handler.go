@@ -60,7 +60,7 @@ func (h *PhotolistHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	now := time.Now().Unix()
+	now := time.Now().Add(1 * time.Hour).Unix()
 
 	token, err := h.Tm.Create(sess, now)
 
@@ -96,6 +96,7 @@ func (h *PhotolistHandler) Rate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	token := r.Header.Get("CSRF-token")
+
 	if token == "" {
 		http.Error(w, `{"err": "bad token"}`, http.StatusBadRequest)
 		return

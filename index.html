@@ -33,7 +33,7 @@
       const response = await fetch(url, {
         method: 'POST',
         headers: {
-          'CSRF-token': "{{.Token}}"
+          'CSRF-token': '{{.Token}}',
         },
       });
       if (!response.ok) return;

@@ -14,7 +14,7 @@ import (
 const PORT = 8080
 const IMAGE_PATH = "./images"
 const DSN = "root:love@tcp(127.0.0.1:3306)/photolist?charset=utf8mb4&parseTime=true"
-const SECRET_TOKEN = "SUPERSECRETTOKENCSRF"
+const SECRET_TOKEN = "SUPERSECRETTOKENCSRF1234"
 
 func main() {
 
@@ -39,7 +39,9 @@ func main() {
 		}
 	}
 
-	tm := NewHMATokenManager([]byte(SECRET_TOKEN))
+	// tm := NewHashTokenManager([]byte(SECRET_TOKEN))
+	// tm := NewCriptoTokenManager([]byte(SECRET_TOKEN))
+	tm := NewJWTTokenManager([]byte(SECRET_TOKEN))
 	st := NewDBStorage(db)
 	tmpl := NewTmpl()
 
