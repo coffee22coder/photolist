@@ -44,7 +44,8 @@ func main() {
 	tm := NewJWTTokenManager([]byte(SECRET_TOKEN))
 	st := NewDBStorage(db)
 
-	sm := NewSessionDBManager(st)
+	// sm := NewSessionDBManager(st)
+	sm := NewSessionJWTVerManager([]byte(SECRET_TOKEN), st)
 
 	tmpl := NewTmpl()
 
@@ -61,6 +62,7 @@ func main() {
 	mux.HandleFunc("/user/login", uh.Login)
 	mux.HandleFunc("/user/reg", uh.Registration)
 	mux.HandleFunc("/user/logout", uh.Logout)
+	mux.HandleFunc("/user/change_pass", uh.ChangePassword)
 
 	http.Handle("/", authMiddleware(sm, mux))
 	http.Handle("/images/", http.StripPrefix("/images", fs))

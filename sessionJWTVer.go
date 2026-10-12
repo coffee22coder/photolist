@@ -24,7 +24,7 @@ type SessionVerClaims struct {
 	jwt.RegisteredClaims
 }
 
-func NewSessionJWTVerTManager(s []byte, st UserStorageVer) *SessionJWTVerManager {
+func NewSessionJWTVerManager(s []byte, st UserStorageVer) *SessionJWTVerManager {
 	return &SessionJWTVerManager{
 		Secret: s,
 		St:     st,
@@ -74,7 +74,7 @@ func (sm *SessionJWTVerManager) Check(ctx context.Context, r *http.Request) (*Se
 func (sm *SessionJWTVerManager) Create(ctx context.Context, userID int, w http.ResponseWriter) error {
 	user, err := sm.St.GetUserByID(ctx, userID)
 	if err != nil {
-		return err
+		return ErrNoAuth
 	}
 
 	exp := time.Now().Add(10 * time.Minute)

@@ -141,10 +141,6 @@ func (h *UserHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	salt := randomName(8)
-
-	psw := hashPassword(newPass, salt)
-
 	sess, err := sessionFromContext(r.Context())
 	if err != nil {
 		http.Redirect(w, r, "/user/login", http.StatusFound)
@@ -157,15 +153,26 @@ func (h *UserHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	expectedSalt := string(user.Password[:8])
+
+	b := hashPassword(oldPass, expectedSalt)
+	if !bytes.Equal(b, user.Password) {
+		http.Error(w, "Неверный пароль", http.StatusBadRequest)
+		return
+	}
+
+	salt := randomName(8)
+	psw := hashPassword(newPass, salt)
+
 	err = h.St.ChangePassword(r.Context(), user.Login, psw)
 	if err != nil {
 		http.Error(w, "Ошибка БД: ChangePassword", http.StatusInternalServerError)
 		return
 	}
 
-	err = h.St.DeleteAllSession(r.Context(), user.ID)
+	err = h.Sm.DestroyAll(r.Context(), user.ID, w)
 	if err != nil {
-		http.Error(w, "Ошибка БД: ChangePassword", http.StatusInternalServerError)
+		http.Error(w, "Непредвиденная Ошибка", http.StatusInternalServerError)
 		return
 	}
 
