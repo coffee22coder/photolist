@@ -23,6 +23,7 @@ type User struct {
 	ID       int
 	Login    string
 	Password []byte
+	Ver      int
 }
 
 type DBStorage struct {
@@ -78,6 +79,7 @@ func (st *DBStorage) migrate() error {
 			id int AUTO_INCREMENT PRIMARY KEY,
 			login VARCHAR(255) NOT NULL UNIQUE,
 			password VARBINARY(255) NOT NULL
+			ver int NOT NULL DEFAULT 0;
 		)
 	`
 
@@ -235,16 +237,28 @@ func (st *DBStorage) CheckSession(ctx context.Context, sessionID string) (*Sessi
 func (st *DBStorage) GetUser(ctx context.Context, login string) (*User, error) {
 	op := "storage.get_user"
 
-	var id int
+	var id, ver int
 	var password []byte
 
-	row := st.db.QueryRowContext(ctx, `SELECT id, password FROM users WHERE login=?`, login)
-	err := row.Scan(&id, &password)
+	row := st.db.QueryRowContext(ctx, `SELECT id, password, ver FROM users WHERE login=?`, login)
+	err := row.Scan(&id, &password, &ver)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", op, err)
 	}
 
-	return &User{ID: id, Login: login, Password: password}, nil
+	return &User{ID: id, Login: login, Password: password, Ver: ver}, nil
+}
+
+func (st *DBStorage) GetUserByID(ctx context.Context, userID int) (*User, error) {
+	op := "storage.get_user_by_id"
+	var ver int
+	var login string
+	row := st.db.QueryRowContext(ctx, `SELECT login, ver FROM users WHERE id=?`, userID)
+	err := row.Scan(&login, &ver)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", op, err)
+	}
+	return &User{ID: userID, Ver: ver}, nil
 }
 
 func (st *DBStorage) CreateUser(ctx context.Context, login string, password []byte) (int, error) {
@@ -266,4 +280,15 @@ func (st *DBStorage) CreateUser(ctx context.Context, login string, password []by
 	}
 
 	return int(id), nil
+}
+
+func (st *DBStorage) ChangePassword(ctx context.Context, login string, password []byte) error {
+	op := "storage.change_password"
+
+	_, err := st.db.ExecContext(ctx, `UPDATE users SET password = ?, ver = vet + 1 WHERE login = ?`, password, login)
+	if err != nil {
+		return fmt.Errorf("%s: %w", op, err)
+	}
+
+	return nil
 }
