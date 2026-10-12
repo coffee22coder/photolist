@@ -7,6 +7,13 @@ import (
 	"net/http"
 )
 
+type SessionManager interface {
+	Check(ctx context.Context, r *http.Request) (*Session, error)
+	Create(ctx context.Context, userID int, w http.ResponseWriter) error
+	DestroyCurrent(ctx context.Context, w http.ResponseWriter, r *http.Request) error
+	DestroyAll(ctx context.Context, userID int, w http.ResponseWriter) error
+}
+
 var noAuthPaths = map[string]struct{}{
 	"/":           {},
 	"/user/login": {},
@@ -17,16 +24,11 @@ type ContextSess string
 
 const authKey ContextSess = "authSess"
 
-func authMiddleware(st *DBStorage, next http.Handler) http.Handler {
+func authMiddleware(sm SessionManager, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if _, ok := noAuthPaths[r.URL.Path]; ok {
 			if r.URL.Path == "/" {
-				cookie, err := r.Cookie("session_id")
-				if err != nil {
-					next.ServeHTTP(w, r)
-					return
-				}
-				session, err := st.CheckSession(r.Context(), cookie.Value)
+				session, err := sm.Check(r.Context(), r)
 				if err != nil {
 					if errors.Is(err, ErrNoAuth) {
 						next.ServeHTTP(w, r)
@@ -45,13 +47,7 @@ func authMiddleware(st *DBStorage, next http.Handler) http.Handler {
 			return
 		}
 
-		cookie, err := r.Cookie("session_id")
-		if err != nil {
-			http.Error(w, "Ошибка авторизации", http.StatusUnauthorized)
-			return
-		}
-
-		session, err := st.CheckSession(r.Context(), cookie.Value)
+		session, err := sm.Check(r.Context(), r)
 		if err != nil {
 			http.Error(w, "Ошибка авторизации", http.StatusUnauthorized)
 			return

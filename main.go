@@ -43,10 +43,13 @@ func main() {
 	// tm := NewCriptoTokenManager([]byte(SECRET_TOKEN))
 	tm := NewJWTTokenManager([]byte(SECRET_TOKEN))
 	st := NewDBStorage(db)
+
+	sm := NewSessionDBManager(st)
+
 	tmpl := NewTmpl()
 
 	ph := NewPhotoHandler(st, tmpl, tm)
-	uh := NewUserHandler(st, tmpl)
+	uh := NewUserHandler(st, tmpl, sm)
 
 	fs := http.FileServer(http.Dir("./images"))
 
@@ -59,7 +62,7 @@ func main() {
 	mux.HandleFunc("/user/reg", uh.Registration)
 	mux.HandleFunc("/user/logout", uh.Logout)
 
-	http.Handle("/", authMiddleware(st, mux))
+	http.Handle("/", authMiddleware(sm, mux))
 	http.Handle("/images/", http.StripPrefix("/images", fs))
 
 	fmt.Printf("🚀 Server run on PORT: %d\n", PORT)

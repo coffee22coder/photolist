@@ -1,167 +1,161 @@
-# ТЗ: PhotoList — шаг 5 (`5_csrf_token`)
+# ТЗ: PhotoList — шаг 6 (`6_jwt_sessions`)
 
 ## Цель
 
-Закрыть XSS и CSRF с шага 4.
+Вынести авторизацию за интерфейс `SessionManager`. Логин, middleware и логаут работают через него, а не через прямые вызовы `CheckSession` / `CreateSession` в `DBStorage`.
 
-Комментарий снова экранируется. Изменяющие запросы (`upload`, `rate`) принимаются только с валидным CSRF-токеном, привязанным к текущей сессии.
+Добавить сессии на **JWT в cookie** (stateless) и вариант **JWT + `users.ver`** для отзыва токенов после смены пароля.
 
-Авторизация через cookie `session_id` и таблицу `sessions` не меняется. Это **не** замена сессии на JWT для логина. JWT здесь — один из способов **подписи CSRF-токена**. Полноценные JWT-сессии — следующий шаг курса, не этот.
+CSRF (`TokenManager`), upload, rate, комментарии и рейтинг с шага 5 **не убирать**. JWT в этом шаге — **сессия пользователя**, не CSRF-токен.
+
+## Подшаги (порядок работы)
+
+### Уже сделано (база шага 6)
+
+- `session.go` — `SessionManager`, `authMiddleware`, сессия в context (`authKey` / `sessionFromContext`).
+- `sessionDB.go` — `SessionDBManager` + `SessionStorage`, cookie `session_id`.
+- `user.go` — логин / регистрация / логаут через `Sm` (без `change_pass`, без `ver` в модели).
+- `sessionJWT.go` — `SessionJWTManager`: cookie `session`, `Check` / `Create` / `Destroy*`.
+
+Допустимые отличия от эталона курса (если осознанно): `context` в методах менеджера и storage; на `GET /` опциональный `Check` и кладка сессии в context для редиректа на `/photos/`.
+
+### Текущий подшаг: `SessionsJWTVer` и закрытие шага 6
+
+Сделать **сейчас**, до приёмки шага 6:
+
+1. **Миграция БД** — колонка `users.ver` (см. раздел «Миграция» ниже).
+2. **`storage` / `User`** — при логине и проверке пароля: `SELECT id, login, ver, password …`; у нового пользователя `Ver: 0`. При необходимости выровнять типы с ТЗ (`uint32` для id).
+3. **`sessionJWTVer.go`** (или аналог) — копия логики `SessionsJWT` + поле `ver` в claims; структура с `Secret` и доступом к БД.
+4. **`Check` (JWTVer)** — после успешного парса JWT: `SELECT ver FROM users WHERE id = ?`; если `claims.ver != ver` → `ErrNoAuth`.
+5. **`Create` (JWTVer)** — в JWT класть актуальный `user.Ver` (нужен `*User` или явная передача `ver`, не только `userID`).
+6. **`UserHandler.ChangePassword`** — `GET`/`POST`, шаблон `change_password`; `UPDATE … ver = ver + 1`, `DestroyAll`, `Create`, редирект `/photos/`.
+7. **`main`** — по умолчанию `NewSessionsJWTVer(secret, db)`; одной строкой можно переключить на `SessionsDB` / `SessionsJWT`.
+8. **Ручная приёмка** — пункты из раздела «Приёмка» (логин без строк в `sessions`, смена пароля отзывает старый JWT, CSRF/upload с сессией из context).
+
+Не обязательно на этом подшаге: переименование `authMiddleware` → `AuthMiddleware`, унификация json-тега `uid` vs `user_id`, TTL cookie 90 дней — можно после прохождения приёмки.
+
+### Следующий подшаг: тесты `photolist_test.go`
+
+После рабочего `SessionsJWTVer` в `main`:
+
+- Привести тесты к актуальному API: `NewPhotoHandler(st, tmpl, tm)` — сейчас в тестах два аргумента, в коде три (`TokenManager` для CSRF на `List`).
+- Обновить мок storage / `MockStorage` под интерфейс `PhotoStorage` (если сигнатуры менялись).
+- Контекст сессии в тестах: тот же ключ, что в middleware (`authKey` или будущий `sessionKey`).
+- Прогон: `go test ./...` без ошибок компиляции и с ожидаемыми статусами 200/500 в `TestList`.
 
 ## Что изменить
 
-- Список фото — снова `html/template` (не `text/template`).
-- Интерфейс `TokenManager`: `Create` / `Check`.
-- Три реализации токена: HMAC, AES-GCM, JWT.
-- В `List` создать токен, отдать в шаблон как `CSRFToken`.
-- `Upload` проверяет токен из формы, `Rate` — из заголовка.
-- В `main` подключить одну реализацию (по умолчанию JWT); остальные должны собираться и уметь подставляться сменой одной строки.
+- `SessionManager`: `Check`, `Create`, `DestroyCurrent`, `DestroyAll`.
+- Три реализации: `SessionsDB`, `SessionsJWT`, `SessionsJWTVer`.
+- `AuthMiddleware(sm SessionManager, …)` вместо `authMiddleware(st *DBStorage, …)`.
+- `UserHandler` вызывает `Sessions.Create` / `Destroy*`, не пишет cookie и не ходит в `sessions` сам.
+- В `users` колонка `ver` (`int`, по умолчанию `0`).
+- Маршрут `POST /user/change_pass`: смена пароля, `ver = ver + 1`, сброс сессий пользователя, новая сессия.
+- `User.ID` / `Session.UserID` — `uint32` (как в эталоне).
+- В `main` по умолчанию `NewSessionsJWTVer(secret, db)`; `SessionsDB` и `SessionsJWT` должны подключаться сменой одной строки.
 
-Секреты для подписи/шифрования — константы в коде для учёбы, не из env.
+Таблица `sessions` нужна только для режима `SessionsDB`. В JWT-режимах строки в `sessions` не создаются.
 
 ## Задачи
 
-### XSS
-
-Страница списка — только `html/template`. `{{.Comment}}` экранируется: `<script>` на странице виден как текст, не выполняется.
-
-Логин и регистрация уже на `html/template` — оставить.
-
-Проверка: загрузить комментарий `<script>alert(1)</script>`, открыть `/photos/` — alert нет, в HTML сущности вроде `<script>`.
-
-### Интерфейс токена
+### Общий контракт
 
 ```text
-TokenManager
-  Create(sess *Session, expUnix int64) (token string, err error)
-  Check(sess *Session, token string) (ok bool, err error)
+SessionManager
+  Check(r *http.Request) (*Session, error)
+  Create(w http.ResponseWriter, user *User) error
+  DestroyCurrent(w http.ResponseWriter, r *http.Request) error
+  DestroyAll(w http.ResponseWriter, user *User) error
 ```
-
-`Create` получает срок жизни Unix-временем (сейчас + 24 часа).
-
-`Check` должен подтвердить:
-
-- токен не битый / не подделан;
-- не истёк;
-- внутри те же `session ID` и `user ID`, что у текущей сессии из context.
-
-Иначе `ok == false` или `err != nil`.
-
-`PhotolistHandler` хранит `Tokens TokenManager` рядом со storage и шаблонами.
-
-### Три реализации
-
-Все три делают одно и то же снаружи (`Create`/`Check`), разный способ упаковки данных `sessionID`, `userID`, `exp`.
-
-#### 1. HMAC (`HashToken`)
-
-Данные для подписи: `sessionID:userID:exp`.
-
-`Create`: HMAC-SHA256 с секретом → hex + `:` + `exp` строкой.  
-Пример вида: `fbc1fd86...:1567618546`.
-
-`Check`: разрезать по `:`, проверить `exp`, заново посчитать HMAC, сравнить через `hmac.Equal`.
-
-Секрет — произвольная строка, например `"golangcourse"`.
-
-#### 2. AES-GCM (`CryptToken`)
-
-Полезная нагрузка — JSON:
 
 ```text
-{ SessionID, UserID, Exp }
+User { ID uint32, Login string, Ver int32 }
+Session { UserID uint32, ID string }
 ```
 
-`Create`: AES-GCM, случайный nonce, `nonce || ciphertext`, целиком в base64.
+Контекст запроса: `SessionFromContext` / ключ как в эталоне (`sessionKey`). Handlers фото и CSRF берут сессию только из context.
 
-`Check`: base64 → decrypt → JSON → `exp` не просрочен → `SessionID`/`UserID` совпадают с сессией.
+`AuthMiddleware`: пути `/`, `/user/login`, `/user/reg` — без обязательной сессии (как в эталоне курса). Остальные — `sm.Check`, при ошибке `401` `No auth`, иначе сессия в context.
 
-Ключ AES — 32 байта (AES-256), строка длины 32.
+`Index` (`GET /`): нет сессии в context → `302` `/user/login`, есть → `302` `/photos/`. (В эталоне middleware на `/` сессию не кладёт — учти при ручной проверке; свой вариант с cookie на `/` можно оставить, если уже сделан.)
 
-#### 3. JWT (`JwtToken`)
+### SessionsDB
 
-Claims: `sid` (session id), `uid` (user id), стандартные `exp` / `iat`.  
-Подпись: HS256, секрет — байты строки (тот же 32-символьный ключ ок).
+Поведение как на шаге 3:
 
-`Create`: `jwt.NewWithClaims` + `SignedString`.
+- Cookie `session_id`, значение — id строки в `sessions`.
+- `Check`: cookie → `SELECT user_id FROM sessions WHERE id = ?`.
+- `Create`: случайный id 32 символа, `INSERT`, cookie ~90 дней.
+- `DestroyCurrent`: `DELETE` по id из context, протухшая cookie.
+- `DestroyAll`: `DELETE FROM sessions WHERE user_id = ?`.
 
-`Check`: `ParseWithClaims`, метод только HMAC HS256, `Valid()`, затем `sid`/`uid` == текущая сессия.
+### SessionsJWT
 
-Зависимость: `github.com/golang-jwt/jwt` (как в курсе) либо актуальный совместимый пакет — главное HS256 и те же claims.
+- Cookie **`session`**, значение — подписанный JWT (HS256).
+- Claims: `uid` (`UserID`), `jti` через `StandardClaims.Id` (случайная строка), `exp`, `iat`.
+- `Check`: парсинг JWT, `Valid()`, без запроса в БД.
+- `Create`: выпустить JWT, положить в cookie.
+- `DestroyCurrent`: только сброс cookie (токен на клиенте остаётся валидным до `exp` — осознанный минус stateless).
+- `DestroyAll`: no-op (другие устройства не отозвать).
 
-В `main` по умолчанию включить JWT. HMAC и AES оставить рядом и закомментированными конструкторами, чтобы можно было переключить без переписывания handler’ов.
+Зависимость: `github.com/golang-jwt/jwt` (как в эталоне).
 
-### Выдача токена (`List`)
+### SessionsJWTVer
 
-После `GetPhotos`:
+Как `SessionsJWT`, плюс в claims поле `ver` (текущее `user.Ver`).
 
-1. `token, err := Tokens.Create(sess, now+24h)`.
-2. Ошибка создания → `500`.
-3. В шаблон:
+`Check` после парсинга JWT:
+
+- `SELECT ver FROM users WHERE id = ?`
+- если `claims.ver != ver` в БД → `ErrNoAuth`
+
+`Create` кладёт в JWT актуальный `user.Ver`.
+
+Смена пароля увеличивает `ver` в БД — все старые JWT этого пользователя перестают проходить `Check`, без таблицы `sessions`.
+
+### UserHandler
+
+- `Login` / `Reg`: после проверки пароля — `Sessions.Create(w, user)`, редирект `/photos/`.
+- `Logout`: `Sessions.DestroyCurrent`, редирект `/user/login`.
+- `ChangePassword`:
+  - `GET` — форма `change_password`;
+  - `POST`: `pass1 == pass2`, проверка `old_password`, `UPDATE users SET password = ?, ver = ver + 1`, `user.Ver++`, `DestroyAll`, `Create`, редирект `/photos/`.
+
+Логин при выборке пользователя: `SELECT id, login, ver, password …` (общий метод проверки пароля, как в эталоне).
+
+Регистрация: новый пользователь с `Ver: 0`.
+
+### main
 
 ```text
-{ Items, CSRFToken }
+// sm := NewSessionsDB(db)
+// sm := NewSessionsJWT("golangcourseSessionSecret")
+sm := NewSessionsJWTVer("golangcourseSessionSecret", db)
+
+http.Handle("/", AuthMiddleware(sm, mux))
 ```
 
-Один и тот же `CSRFToken` используется и формой, и JS.
+`UserHandler.Sessions = sm`. Убрать из middleware зависимость от `DBStorage` для сессий.
 
-### Доставка на клиенте
+Секрет JWT — константа в коде (учебный проект).
 
-Форма upload — скрытое поле:
+### Миграция
 
-```html
-<input type="hidden" name="csrf-token" value="{{.CSRFToken}}" />
-```
+`users`: добавить `ver TINYINT NOT NULL DEFAULT 0` (или `INT`).
 
-JS голоса — заголовок (не query):
+Существующие пользователи: `ver = 0`.
 
-```text
-Header: csrf-token: <тот же CSRFToken>
-POST /photos/rate?id=...&vote=up|down
-```
+### Приёмка
 
-Имена: поле формы `csrf-token`, заголовок `csrf-token`.
-
-### Проверка на сервере
-
-`Upload` (до работы с файлом):
-
-- `token := r.FormValue("csrf-token")`
-- `Check(sess, token)` не ок → `401`, тело `bad token`
-- дальше прежняя логика загрузки
-
-`Rate`:
-
-- `token := r.Header.Get("csrf-token")`
-- не ок → `401`, JSON `{"err": "bad token"}`
-- дальше прежняя логика `id` / `vote` / JSON `{"id": ...}`
-
-Сессию по-прежнему берёшь из context (middleware). Без сессии до проверки CSRF запрос не доходит (`401` No auth), как раньше.
-
-Явно требовать только `POST` для `Rate` не обязательно: header картинка всё равно не выставит, старый CSRF через `<img>` уже не пройдёт.
-
-### Как убедиться
-
-**XSS закрыт.** Комментарий со `<script>alert(1)</script>` не выполняется.
-
-**CSRF rate закрыт.**
-
-- Кнопки `+`/`−` на `/photos/` работают (header с токеном).
-- `GET`/`img` на `/photos/rate?id=1&vote=up` без header → `401` / bad token, рейтинг не растёт.
-- `evil.html` с `<img src="http://localhost:8080/photos/rate?...">` не меняет рейтинг.
-
-**CSRF upload закрыт.**
-
-- Обычная загрузка с `/photos/` работает (hidden field).
-- POST на `/upload` без поля / с чужим токеном → `401 bad token`.
-
-**Смена реализации.** В `main` вместо JWT включить HMAC или AES — upload и rate продолжают работать без правок handler’ов.
+1. **SessionsDB** (если включить в main): логин, галерея, логаут — как на шаге 3; после логаута закрытые URL → `401`.
+2. **SessionsJWTVer** (режим по умолчанию): логин → cookie `session`, `/photos/` открывается; в БД новых строк в `sessions` нет.
+3. Смена пароля: старый JWT перестаёт работать (`401` на `/photos/`), после успешного change — новая сессия, галерея снова доступна.
+4. CSRF upload/rate с шага 5 по-прежнему работают с сессией из context.
+5. Два пользователя видят разные фото (`UserID` из JWT).
 
 ### Не делать
 
-- Не переносить логин на JWT вместо `sessions` (это шаг `6_jwt_sessions`).
-- Не хранить CSRF-токены в БД: все три варианта — самодостаточные (подпись / шифр), сервер только считает `Check`.
-- Не класть CSRF в cookie вместо form/header — смысл шага в synchronizer token на странице.
-- Не оставлять список на `text/template`.
-- Тесты на `TokenManager` не обязательны; моки storage поправить, если интерфейс handler’а разъехался.
-
+- Не смешивать cookie `session_id` (БД) и `session` (JWT) в одной реализации.
+- Не хранить JWT-сессии в таблице `sessions`.
+- Не удалять `TokenManager` и проверки CSRF.
+- Refresh-токены, OAuth, Redis blacklist JWT — вне шага.

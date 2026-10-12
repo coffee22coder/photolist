@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"net/http"
-	"time"
 
 	"golang.org/x/crypto/argon2"
 )
@@ -15,9 +14,6 @@ type Session struct {
 }
 
 type UserStorage interface {
-	CheckSession(ctx context.Context, sessionID string) (*Session, error)
-	CreateSession(ctx context.Context, userID int) (*Session, error)
-	DeleteSession(ctx context.Context, sessionID string) error
 	GetUser(ctx context.Context, login string) (*User, error)
 	CreateUser(ctx context.Context, login string, password []byte) (int, error)
 }
@@ -25,12 +21,14 @@ type UserStorage interface {
 type UserHandler struct {
 	St   UserStorage
 	Tmpl *Tmpl
+	Sm   SessionManager
 }
 
-func NewUserHandler(st UserStorage, tmpl *Tmpl) *UserHandler {
+func NewUserHandler(st UserStorage, tmpl *Tmpl, sm SessionManager) *UserHandler {
 	return &UserHandler{
 		St:   st,
 		Tmpl: tmpl,
+		Sm:   sm,
 	}
 }
 
@@ -65,21 +63,12 @@ func (h *UserHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sess, err := h.St.CreateSession(r.Context(), user.ID)
+	err = h.Sm.Create(r.Context(), user.ID, w)
 	if err != nil {
 		http.Error(w, "Непредвиденная Ошибка", http.StatusInternalServerError)
 		return
 	}
 
-	cookie := http.Cookie{
-		Name:     "session_id",
-		Value:    sess.ID,
-		Path:     "/",
-		Expires:  time.Now().Add(24 * time.Hour),
-		HttpOnly: true,
-	}
-
-	http.SetCookie(w, &cookie)
 	http.Redirect(w, r, "/photos", http.StatusFound)
 }
 
@@ -110,46 +99,23 @@ func (h *UserHandler) Registration(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sess, err := h.St.CreateSession(r.Context(), userID)
+	err = h.Sm.Create(r.Context(), userID, w)
 	if err != nil {
 		http.Error(w, "Непредвиденная Ошибка", http.StatusInternalServerError)
 		return
 	}
 
-	cookie := http.Cookie{
-		Name:     "session_id",
-		Value:    sess.ID,
-		Path:     "/",
-		Expires:  time.Now().Add(24 * time.Hour),
-		HttpOnly: true,
-	}
-
-	http.SetCookie(w, &cookie)
 	http.Redirect(w, r, "/photos", http.StatusFound)
 }
 
 func (h *UserHandler) Logout(w http.ResponseWriter, r *http.Request) {
-	sess, err := sessionFromContext(r.Context())
+
+	err := h.Sm.DestroyCurrent(r.Context(), w, r)
 	if err != nil {
 		http.Error(w, "Непредвиденная Ошибка", http.StatusInternalServerError)
 		return
 	}
 
-	err = h.St.DeleteSession(r.Context(), sess.ID)
-	if err != nil {
-		http.Error(w, "Непредвиденная Ошибка", http.StatusInternalServerError)
-		return
-	}
-
-	cookie := http.Cookie{
-		Name:     "session_id",
-		Value:    sess.ID,
-		Path:     "/",
-		Expires:  time.Now().Add(-24 * time.Hour),
-		HttpOnly: true,
-	}
-
-	http.SetCookie(w, &cookie)
 	http.Redirect(w, r, "/user/login", http.StatusFound)
 
 }

@@ -204,6 +204,17 @@ func (st *DBStorage) DeleteSession(ctx context.Context, sessionID string) error 
 	return nil
 }
 
+func (st *DBStorage) DeleteAllSession(ctx context.Context, userID int) error {
+	op := "storage.delete_all_session"
+
+	_, err := st.db.ExecContext(ctx, `DELETE FROM sessions WHERE user_id=?`, userID)
+	if err != nil {
+		return fmt.Errorf("%s: %w", op, err)
+	}
+
+	return nil
+}
+
 func (st *DBStorage) CheckSession(ctx context.Context, sessionID string) (*Session, error) {
 	op := "storage.check_session"
 
